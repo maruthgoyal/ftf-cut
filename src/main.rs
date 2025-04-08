@@ -71,14 +71,12 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
             let record_type = header.record_type()?;
             match record_type {
                 RecordType::String => {
-                    println!("STRING");
                     let index = StringRecord::index_from_header(&header);
                     self.index_to_offset.insert(index, pos);
                     let jump = (header.size() - 1) * 8;
                     self.input.seek(std::io::SeekFrom::Current(jump.into()))?;
                 }
                 RecordType::Event => {
-                    println!("EVENT");
                     self.input.seek(std::io::SeekFrom::Start(pos))?;
                     let event = Record::from_bytes(&mut self.input)?;
                     if let Record::Event(e) = &event {
@@ -90,14 +88,13 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
                             EventRecord::Instant(i) => self.process_event(i.event())?,
                             _ => true,
                         };
-                        
+
                         if write_it { 
                             event.write(&mut self.output)?;
                         }
                     }
                 }
                 _ => {
-                    println!("other");
                     self.output.write_all(&header_buf)?;
                     if header.size() > 1 {
                         let mut rest = vec![0_u8; (header.size() as usize - 1) * 8];
