@@ -2,8 +2,8 @@ use anyhow::{Ok, Result, anyhow};
 use ftfrs::{Event, EventRecord, Record, RecordHeader, RecordType, StringRecord, StringRef};
 use std::{
     fs::File,
-    io::{BufReader, BufWriter, Cursor, ErrorKind, Read, Seek, Write},
-    path::PathBuf, time::Instant,
+    io::{BufWriter, Cursor, ErrorKind, Read, Seek, Write},
+    path::PathBuf, 
 };
 
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -23,11 +23,9 @@ struct Cli {
 }
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    // 8Ki
     let file = File::open(cli.input_path)?;
     let map = unsafe { memmap2::Mmap::map(&file)? };
     let f = Cursor::new(map);
-    // let input = BufReader::with_capacity(8 * 1024 * 1024, File::open(cli.input_path)?);
     let output = BufWriter::new(File::create(cli.output_path)?);
     let mut cutter = Cutter::new(f, output, cli.start_ts, cli.end_ts);
     println!("Cutting");
@@ -64,13 +62,6 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
         }
     }
 
-    #[inline(never)]
-    fn seek_to(&mut self, jmp: i64) -> Result<()> {
-        self.input.seek_relative(jmp)?;
-        Ok(())
-    }
-
-    #[inline(never)]
     fn cut(&mut self) -> Result<()> {
         let mut header_buf = [0_u8; 8];
 
@@ -91,12 +82,10 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
                     let index = StringRecord::index_from_header(&header);
                     self.index_to_offset.insert(index, pos);
                     let jump = ((header.size() - 1) as u32) * 8;
-                    self.seek_to(jump.into())?;
-                    // self.input.seek_relative(jump.into())?;
+                    self.input.seek_relative(jump.into())?;
                 }
                 RecordType::Event => {
-                    self.seek_to(-8)?;
-                    // self.input.seek_relative(-8)?;
+                    self.input.seek_relative(-8)?;
                     let event = Record::from_bytes(&mut self.input)?;
                     if let Record::Event(e) = &event {
                         let write_it = match e {
@@ -135,9 +124,7 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
         self.miss_count += 1;
         if let Some(offset) = self.index_to_offset.get(&idx) {
             let pos = self.input.stream_position()?;
-            // self.input.seek(std::io::SeekFrom::Start(*offset))?;
             self.input.seek_relative(-((pos - *offset) as i64))?;
-            // self.seek_to(-((pos - *offset) as i64))?;
 
             let mut header_buf = [0_u8; 8];
             self.input.read_exact(&mut header_buf)?;
