@@ -1,7 +1,8 @@
-# FTF-Cut
+# ftf-cut
 
 A Rust CLI tool to filter Fuchsia Trace Format (FTF) traces by timestamp range.
 
+Can process 2Gi traces at 300-900MB/s with <2MB memory usage
 ## Usage
 
 ```bash
