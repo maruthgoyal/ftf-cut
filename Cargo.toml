@@ -7,3 +7,12 @@ edition = "2024"
 anyhow = "1.0.97"
 clap = { version = "4.5.35", features = ["derive"] }
 ftfrs = { path = "../ftfrs" }
+rustc-hash = "2.1.1"
+
+[[example]]
+name = "generate_large_trace"
+path = "examples/generate_large_trace.rs"
+
+[[example]]
+name = "benchmark"
+path = "examples/benchmark.rs"

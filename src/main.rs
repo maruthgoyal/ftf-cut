@@ -1,11 +1,12 @@
 use anyhow::{Ok, Result, anyhow};
 use ftfrs::{Event, EventRecord, Record, RecordHeader, RecordType, StringRecord, StringRef};
 use std::{
-    collections::{HashMap, HashSet},
     fs::File,
     io::{BufReader, BufWriter, ErrorKind, Read, Seek, Write},
     path::PathBuf,
 };
+
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use clap::Parser;
 
@@ -34,16 +35,16 @@ fn main() -> Result<()> {
 struct Cutter<R: Read + Seek, W: Write> {
     input: R,
     output: W,
-    index_to_offset: HashMap<u16, u64>,
-    written_indexes: HashSet<u16>,
+    index_to_offset: FxHashMap<u16, u64>,
+    written_indexes: FxHashSet<u16>,
     start_ts: u64,
     end_ts: u64,
 }
 
 impl<R: Read + Seek, W: Write> Cutter<R, W> {
     fn new(input: R, output: W, start_ts: u64, end_ts: u64) -> Self {
-        let index_to_offset = HashMap::new();
-        let written_indexes = HashSet::new();
+        let index_to_offset = FxHashMap::default();
+        let written_indexes = FxHashSet::default();
         Self {
             input,
             output,
@@ -74,10 +75,11 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
                     let index = StringRecord::index_from_header(&header);
                     self.index_to_offset.insert(index, pos);
                     let jump = (header.size() - 1) * 8;
-                    self.input.seek(std::io::SeekFrom::Current(jump.into()))?;
+                    self.input.seek_relative(jump.into())?;
                 }
                 RecordType::Event => {
-                    self.input.seek(std::io::SeekFrom::Start(pos))?;
+                    // self.input.seek(std::io::SeekFrom::Start(pos))?;
+                    self.input.seek_relative(-8)?;
                     let event = Record::from_bytes(&mut self.input)?;
                     if let Record::Event(e) = &event {
                         let write_it = match e {
@@ -98,9 +100,7 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
                     self.output.write_all(&header_buf)?;
                     if header.size() > 1 {
                         let mut rest = vec![0_u8; (header.size() as usize - 1) * 8];
-                        println!("ded {}", header.size());
                         self.input.read_exact(&mut rest)?;
-                        println!("not ded {}", header.size());
                         self.output.write_all(&rest)?;
                     }
                 }
@@ -116,7 +116,8 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
         }
         if let Some(offset) = self.index_to_offset.get(&idx) {
             let pos = self.input.stream_position()?;
-            self.input.seek(std::io::SeekFrom::Start(*offset))?;
+            // self.input.seek(std::io::SeekFrom::Start(*offset))?;
+            self.input.seek_relative((*offset as i64) - (pos as i64))?;
 
             let mut header_buf = [0_u8; 8];
             self.input.read_exact(&mut header_buf)?;
@@ -131,7 +132,7 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
                 self.output.write_all(&rest)?;
             }
 
-            self.input.seek(std::io::SeekFrom::Start(pos))?;
+            self.input.seek_relative((pos - *offset) as i64)?;
         } else {
             return Err(anyhow!("Referenced String index missing: {idx}"));
         }
