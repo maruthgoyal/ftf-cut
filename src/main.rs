@@ -136,6 +136,7 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
         } else {
             return Err(anyhow!("Referenced String index missing: {idx}"));
         }
+        self.written_indexes.insert(idx);
         Ok(())
     }
 
