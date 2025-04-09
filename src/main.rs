@@ -38,7 +38,7 @@ fn main() -> Result<()> {
 struct Cutter<R: Read + Seek, W: Write> {
     input: R,
     output: W,
-    index_to_offset: FxHashMap<u16, u64>,
+    index_to_offset: FxHashMap<u16, Record>,
     written_indexes: FxHashSet<u16>,
     start_ts: u64,
     end_ts: u64,
@@ -79,10 +79,9 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
             let record_type = header.record_type()?;
             match record_type {
                 RecordType::String => {
-                    let index = StringRecord::index_from_header(&header);
-                    self.index_to_offset.insert(index, pos);
-                    let jump = ((header.size() - 1) as u32) * 8;
-                    self.input.seek_relative(jump.into())?;
+                    self.input.seek_relative(-8)?;
+                    let event = Record::from_bytes(&mut self.input)?;
+                    self.index_to_offset.insert(StringRecord::index_from_header(&header), event);
                 }
                 RecordType::Event => {
                     self.input.seek_relative(-8)?;
@@ -122,25 +121,8 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
             return Ok(());
         }
         self.miss_count += 1;
-        if let Some(offset) = self.index_to_offset.get(&idx) {
-            let pos = self.input.stream_position()?;
-            self.input.seek_relative(-((pos - *offset) as i64))?;
-
-            let mut header_buf = [0_u8; 8];
-            self.input.read_exact(&mut header_buf)?;
-
-            let header = RecordHeader {
-                value: u64::from_ne_bytes(header_buf),
-            };
-            self.output.write_all(&header_buf)?;
-            if header.size() > 1 {
-                let mut rest = vec![0_u8; (header.size() as usize - 1) * 8];
-                self.input.read_exact(&mut rest)?;
-                self.output.write_all(&rest)?;
-            }
-
-            let jump = pos -  (*offset + (header.size() * 8) as u64);
-            self.input.seek_relative(jump as i64)?;
+        if let Some(rec) = self.index_to_offset.get(&idx) {
+            rec.write(&mut self.output)?;
         } else {
             return Err(anyhow!("Referenced String index missing: {idx}"));
         }
