@@ -25,13 +25,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let file = File::open(cli.input_path)?;
     let map = unsafe { memmap2::Mmap::map(&file)? };
-    let f = Cursor::new(map);
     let output = BufWriter::new(File::create(cli.output_path)?);
-    let mut cutter = Cutter::new(f, output, cli.start_ts, cli.end_ts);
+    let mut cutter = Cutter::new(Cursor::new(map), output, cli.start_ts, cli.end_ts);
     println!("Cutting");
     cutter.cut()?;
     println!("Done");
-    println!("{} {} {}", (cutter.hit_count as f64) / ((cutter.hit_count + cutter.miss_count ) as f64), cutter.hit_count, cutter.miss_count);
     Ok(())
 }
 
@@ -42,8 +40,6 @@ struct Cutter<R: Read + Seek, W: Write> {
     written_indexes: FxHashSet<u16>,
     start_ts: u64,
     end_ts: u64,
-    hit_count: u64,
-    miss_count: u64
 }
 
 impl<R: Read + Seek, W: Write> Cutter<R, W> {
@@ -57,8 +53,6 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
             written_indexes,
             start_ts,
             end_ts,
-            hit_count: 0,
-            miss_count: 0
         }
     }
 
@@ -66,7 +60,6 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
         let mut header_buf = [0_u8; 8];
 
         loop {
-            let pos = self.input.stream_position()?;
             if let Err(e) = self.input.read_exact(&mut header_buf) {
                 if e.kind() == ErrorKind::UnexpectedEof {
                     break;
@@ -117,10 +110,8 @@ impl<R: Read + Seek, W: Write> Cutter<R, W> {
 
     fn maybe_write_str_ref(&mut self, idx: u16) -> Result<()> {
         if self.written_indexes.contains(&idx) {
-            self.hit_count += 1;
             return Ok(());
         }
-        self.miss_count += 1;
         if let Some(rec) = self.index_to_offset.get(&idx) {
             rec.write(&mut self.output)?;
         } else {
